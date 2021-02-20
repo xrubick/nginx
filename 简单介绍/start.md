@@ -101,3 +101,148 @@ server {
 
 在 PHP中，SCRIPT_FILENAME:参数用于确定脚本名称，QUERY_STRING参数用于传递请求参数
 
+#### 6.Connection processing methods
+
+nginx将自动选择处理连接请求的最高效的方法methods:
+
+- select
+- poll
+- kqueue  ( FreeBSD 4.1+, OpenBSD 2.9+, NetBSD 2.0, and macOS)
+- epoll  (Linux 2.6+)
+- /dev/poll  (Solaris 7 11/99+, HP/UX 11.22+ (eventport), IRIX 6.5.15+, and Tru64 UNIX 5.1A+)
+- eventport  (Solaris 10+ (due to known issues, it is recommended using the `/dev/poll` method instead))
+
+```
+Syntax:	use method;
+Default:	—
+Context:	events
+```
+
+#### 7.debugging log
+
+验证nginx编译时配置是否支持debug，执行命令：
+
+```
+nginx -V
+输出结果：configure arguments: --with-debug ...
+```
+
+重新定义日志而不指定调试级别将禁用调试日志
+
+```
+error_log /path/to/log debug;
+http {
+    server {
+        error_log /path/to/log;
+        ...
+```
+
+启用调试功能需要：
+
+```
+error_log /path/to/log debug;
+http {
+    server {
+        error_log /path/to/log debug; #添加debug调试级别，或者注释此行
+        ...
+```
+
+#### 8.nginx日志输出到syslog
+
+```
+error_log syslog:server=192.168.1.1 debug;
+access_log syslog:server=unix:/var/log/nginx.sock,nohostname;
+access_log syslog:server=[2001:db8::1]:12345,facility=local7,tag=nginx,severity=info combined;
+```
+
+参数解释：相关链接[RFC 3164](https://tools.ietf.org/html/rfc3164#section-4.1)
+
+```
+facility=string  #设置系统日志消息功能，参考RFC 3164 
+nohostname  #禁用将“hostname”字段添加到系统日志消息头中
+tag=string  #设置syslog消息的tag
+severity=string  #设置日志级别，参考RFC 3164
+```
+
+#### 9.load balancer
+
+负载均衡机制：
+
+```
+round-robin  #简单轮询 默认模式
+least-connected  #最少活跃连接数
+ip-hash  #基于client ip的会话保持
+```
+
+Nginx中的反向代理实现包括HTTP，HTTPS，FastCGI，uwsgi，SCGI，memcached和gRPC的负载平衡
+
+##### 简单轮询
+
+```
+http {
+    upstream myapp1 {
+        server srv1.example.com;
+        server srv2.example.com;
+        server srv3.example.com;
+    }
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://myapp1;
+        }
+    }
+}
+```
+
+##### 最少连接数
+
+```
+    upstream myapp1 {
+        least_conn;
+        server srv1.example.com;
+        server srv2.example.com;
+        server srv3.example.com;
+    }
+```
+
+##### ip-hash
+
+```
+    upstream myapp1 {
+        ip_hash;
+        server srv1.example.com;
+        server srv2.example.com;
+        server srv3.example.com;
+    }
+```
+
+##### 加权负载均衡
+
+```
+    upstream myapp1 {
+        server srv1.example.com weight=3; #3
+        server srv2.example.com;  #1
+        server srv3.example.com;  #1
+    }
+```
+
+##### 健康检查
+
+```
+upstream dynamic {
+    server backend1.example.com      weight=5;
+    server backend2.example.com:8080 fail_timeout=5s slow_start=30s;
+    server 192.0.2.1                 max_fails=3;
+    server backend3.example.com      resolve;
+    server backend4.example.com      service=http resolve;
+    server backup1.example.com:8080  backup;
+    server backup2.example.com:8080  backup;
+}
+server {
+    location / {
+        proxy_pass http://dynamic;
+        health_check;
+    }
+}
+```
+
